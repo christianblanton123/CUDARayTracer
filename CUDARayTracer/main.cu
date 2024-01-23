@@ -23,7 +23,6 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
     }
 }
 
-
 __device__ vec3 color(const ray& r, hittable** world, curandState* local_rand_state) {
     ray cur_ray = r;
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
@@ -82,6 +81,7 @@ __global__ void render(vec3* fb, int max_x, int max_y, int ns, camera** cam, hit
 }
 
 #define RND (curand_uniform(&local_rand_state))
+#define CLAMPRND(a,b) a+(b-a)*RND
 
 __global__ void create_world(hittable** d_list, hittable** d_world, camera** d_camera, int nx, int ny, curandState* rand_state) {
     if (threadIdx.x == 0 && blockIdx.x == 0) {
@@ -94,7 +94,8 @@ __global__ void create_world(hittable** d_list, hittable** d_world, camera** d_c
                 float choose_mat = RND;
                 vec3 center(a + RND, 0.2, b + RND);
                 if (choose_mat < 0.8f) {
-                    d_list[i++] = new sphere(center, 0.2,
+                    vec3 center2=center+vec3(0,CLAMPRND(0.0f,0.5f), 0);
+                    d_list[i++] = new sphere(center,center2, 0.2,
                         new lambertian(vec3(RND * RND, RND * RND, RND * RND)));
                 }
                 else if (choose_mat < 0.95f) {
@@ -128,7 +129,7 @@ __global__ void create_world(hittable** d_list, hittable** d_world, camera** d_c
 
 __global__ void free_world(hittable** d_list, hittable** d_world, camera** d_camera) {
     for (int i = 0; i < 22 * 22 + 1 + 3; i++) {
-        delete ((sphere*)d_list[i])->mat;
+        delete ((sphere*)d_list[i])->get_mat();
         delete d_list[i];
     }
     delete* d_world;
@@ -138,7 +139,7 @@ __global__ void free_world(hittable** d_list, hittable** d_world, camera** d_cam
 int main() {
     int nx = 1200;
     int ny = 600;
-    int ns = 10;
+    int ns = 500;
     int tx = 8;
     int ty = 8;
 
