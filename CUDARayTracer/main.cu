@@ -9,7 +9,7 @@
 #include "hittable_list.h"
 #include "camera.h"
 #include "material.h"
-
+#include "bvh.h"
 // limited version of checkCudaErrors from helper_cuda.h in CUDA examples
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
 
@@ -28,7 +28,7 @@ __device__ vec3 color(const ray& r, hittable** world, curandState* local_rand_st
     vec3 cur_attenuation = vec3(1.0, 1.0, 1.0);
     for (int i = 0; i < 50; i++) {
         hit_record rec;
-        if ((*world)->hit(cur_ray, 0.001f, FLT_MAX, rec)) {
+        if ((*world)->hit(cur_ray, interval(0.001f, FLT_MAX), rec)) {
             ray scattered;
             vec3 attenuation;
             if (rec.mat->scatter(cur_ray, rec, attenuation, scattered, local_rand_state)) {
@@ -89,6 +89,7 @@ __global__ void create_world(hittable** d_list, hittable** d_world, camera** d_c
         d_list[0] = new sphere(vec3(0, -1000.0, -1), 1000,
             new lambertian(vec3(0.5, 0.5, 0.5)));
         int i = 1;
+        
         for (int a = -11; a < 11; a++) {
             for (int b = -11; b < 11; b++) {
                 float choose_mat = RND;
@@ -111,8 +112,11 @@ __global__ void create_world(hittable** d_list, hittable** d_world, camera** d_c
         d_list[i++] = new sphere(vec3(-4, 1, 0), 1.0, new lambertian(vec3(0.4, 0.2, 0.1)));
         d_list[i++] = new sphere(vec3(4, 1, 0), 1.0, new metal(vec3(0.7, 0.6, 0.5), 0.0));
         *rand_state = local_rand_state;
-        *d_world = new hittable_list(d_list, 22 * 22 + 1 + 3);
-
+        int num_hittables = 22*22+3+1;
+        hittable_list* world = new hittable_list(d_list, num_hittables);
+        world->update_bounding_box();
+        hittable* w = new bvh_node(d_list, i, &local_rand_state);
+        *d_world = w;
         vec3 lookfrom(13, 2, 3);
         vec3 lookat(0, 0, 0);
         float dist_to_focus = 10.0; (lookfrom - lookat).length();
@@ -128,7 +132,7 @@ __global__ void create_world(hittable** d_list, hittable** d_world, camera** d_c
 }
 
 __global__ void free_world(hittable** d_list, hittable** d_world, camera** d_camera) {
-    for (int i = 0; i < 22 * 22 + 1 + 3; i++) {
+    for (int i = 0; i < 22 * 22 + 3 + 1; i++) {
         delete ((sphere*)d_list[i])->get_mat();
         delete d_list[i];
     }
@@ -148,7 +152,10 @@ int main() {
 
     int num_pixels = nx * ny;
     size_t fb_size = num_pixels * sizeof(vec3);
-
+    size_t limit=4096;
+    //checkCudaErrors(cudaThreadGetLimit(&limit, cudaLimitStackSize));
+    //checkCudaErrors(cudaThreadSetLimit(&limit, cudaLimitStackSize));
+    checkCudaErrors(cudaDeviceSetLimit(cudaLimitStackSize, limit));
     // allocate FB
     vec3* fb;
     checkCudaErrors(cudaMallocManaged((void**)&fb, fb_size));

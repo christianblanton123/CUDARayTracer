@@ -85,6 +85,9 @@
   <ItemGroup>
     <ClInclude Include="color.h" />
     <ClInclude Include="camera.h" />
+    <ClInclude Include="aabb.h" />
+    <ClInclude Include="bvh.h" />
+    <ClInclude Include="interval.h" />
     <ClInclude Include="material.h" />
     <ClInclude Include="sphere.h" />
     <ClInclude Include="hittable.h" />
